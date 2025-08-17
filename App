@@ -1,0 +1,16 @@
+import SwiftUI
+import SwiftData
+
+@main
+struct TaskManagerApp: App {
+    var body: some Scene {
+        WindowGroup {
+            // NavigationViewを追加してタイトルバーを表示
+            NavigationView {
+                OverviewView()
+            }
+        }
+        // ここでSwiftDataのコンテナをアプリ全体に提供します
+        .modelContainer(for: [CellData.self, ChecklistItem.self])
+    }
+}
