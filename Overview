@@ -1,0 +1,77 @@
+import SwiftUI
+import SwiftData
+
+struct OverviewView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \CellData.zIndex, order: .forward)
+    private var cells: [CellData]
+    
+    @State private var showingEditSheetFor: CellData?
+
+    var body: some View {
+        ZStack {
+            // ▼▼▼【変更点1】▼▼▼
+            // 単色の背景をグラデーションに変更
+            LinearGradient(
+                gradient: Gradient(colors: [Color.themeBackground, Color(hex: "0A246A")]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            // ▲▲▲【ここまで】▲▲▲
+            
+            GeometryReader { geometry in
+                ZStack {
+                    ForEach(cells) { cell in
+                        CellView(cell: cell, onLongPress: {
+                            bringToFront(cell: cell)
+                            showingEditSheetFor = cell
+                        })
+                    }
+                }
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    ForEach(CellType.allCases, id: \.self) { type in
+                        Button(type.rawValue) {
+                            addCell(type: type)
+                        }
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.themeAccent3)
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "plus")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Color.themeAccent1)
+                    }
+                }
+            }
+        }
+        .sheet(item: $showingEditSheetFor) { cell in
+            CellEditView(cell: cell)
+        }
+    }
+    
+    private func addCell(type: CellType) {
+        let maxZIndex = cells.map { $0.zIndex }.max() ?? 0
+        let newCell = CellData(
+            cellType: type,
+            position: CGPoint(x: 200, y: 300),
+            zIndex: maxZIndex + 1
+        )
+        modelContext.insert(newCell)
+    }
+    
+    private func bringToFront(cell: CellData) {
+        let maxZIndex = cells.map { $0.zIndex }.max() ?? 0
+        if cell.zIndex <= maxZIndex {
+            cell.zIndex = maxZIndex + 1
+        }
+    }
+}
