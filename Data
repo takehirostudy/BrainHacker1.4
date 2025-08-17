@@ -1,0 +1,63 @@
+import Foundation
+import SwiftData
+
+enum CellType: String, Codable, CaseIterable {
+    case routine = "ルーティーン"
+    case today = "今日やること"
+    case deadline = "締切管理"
+    case memo = "メモ"
+}
+
+@Model
+final class CellData {
+    @Attribute(.unique) var id: UUID
+    var creationDate: Date
+    var cellType: CellType
+    var positionX: Double
+    var positionY: Double
+    var sizeWidth: Double
+    var sizeHeight: Double
+    var zIndex: Int
+    var customTitle: String
+    
+    // ▼▼▼【ここを修正】▼▼▼
+    // プロパティをオプショナル(?)でなくし、より安全な定義に変更
+    @Relationship(deleteRule: .cascade, inverse: \ChecklistItem.cell)
+    var items: [ChecklistItem] = []
+    // ▲▲▲【ここまで】▲▲▲
+    
+    var memoContent: String
+
+    init(cellType: CellType, position: CGPoint, zIndex: Int) {
+        self.id = UUID()
+        self.creationDate = Date()
+        self.cellType = cellType
+        self.positionX = position.x
+        self.positionY = position.y
+        self.sizeWidth = 300
+        self.sizeHeight = 200
+        self.zIndex = zIndex
+        self.customTitle = cellType.rawValue
+        self.memoContent = ""
+        self.items = [] // この行は変更なし
+    }
+}
+
+@Model
+final class ChecklistItem {
+    @Attribute(.unique) var id: UUID
+    var text: String
+    var isCompleted: Bool
+    var creationDate: Date = Date()
+    var indentationLevel: Int = 0
+    var scheduledTime: Date?
+    var deadlineDate: Date?
+    var cell: CellData?
+
+    init(text: String = "", isCompleted: Bool = false) {
+        self.id = UUID()
+        self.text = text
+        self.isCompleted = isCompleted
+    }
+}
+
