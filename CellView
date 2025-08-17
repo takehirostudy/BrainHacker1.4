@@ -1,0 +1,117 @@
+import SwiftUI
+
+struct CellView: View {
+    @Bindable var cell: CellData
+    var onLongPress: () -> Void
+
+    // --- ジェスチャー管理用のState ---
+    @State private var dragOffset: CGSize = .zero
+    @State private var resizeOffset: CGSize = .zero
+    
+    // 統合ジェスチャーのためのState
+    @State private var longPressTimer: Timer?
+    @State private var isDragging = false
+    @State private var hasTriggeredTransition = false
+    
+    private let minSize = CGSize(width: 150, height: 100)
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(cell.cellType.rawValue)
+                    .font(.headline).padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.themeAccent2.opacity(0.8)).foregroundColor(.white)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    if cell.cellType == .memo {
+                        Text(cell.memoContent).font(.body).lineLimit(5)
+                    } else {
+                        // ▼▼▼ 修正箇所 ▼▼▼
+                        // if letによる不要なアンラップを削除
+                        ForEach(cell.items.prefix(3)) { item in
+                        // ▲▲▲ ここまで ▲▲▲
+                            HStack(spacing: 4) {
+                                Button(action: { item.isCompleted.toggle() }) {
+                                    Image(systemName: item.isCompleted ? "checkmark.square" : "square")
+                                }.buttonStyle(.plain)
+                                Text(item.text).lineLimit(1).strikethrough(item.isCompleted, color: .gray)
+                                Spacer()
+                                if cell.cellType == .deadline, let date = item.deadlineDate {
+                                    Text(date, format: .dateTime.month().day()).font(.caption2)
+                                        .padding(.horizontal, 6).padding(.vertical, 3)
+                                        .background(Color.black.opacity(0.1)).clipShape(Capsule())
+                                } else if let time = item.scheduledTime {
+                                    Text(time, style: .time).font(.caption2)
+                                        .padding(.horizontal, 6).padding(.vertical, 3)
+                                        // ▼▼▼【ここを修正】▼▼▼
+                                        .background(Color.black.opacity(0.1)).clipShape(Capsule()) // "Capsole" -> "Capsule"
+                                        // ▲▲▲【ここまで】▲▲▲
+                                }
+                            }
+                            .foregroundColor(item.isCompleted ? .gray : .primary)
+                        }
+                    }
+                    Spacer()
+                }.padding(8)
+            }
+            .background(Color.cellBackground).cornerRadius(12).shadow(radius: 5)
+            
+            Circle()
+                .fill(Color.themeAccent3.opacity(0.8)).frame(width: 20, height: 20).padding(5)
+                .gesture(resizeGesture)
+        }
+        .frame(width: cell.sizeWidth + resizeOffset.width, height: cell.sizeHeight + resizeOffset.height)
+        .position(x: cell.positionX + dragOffset.width, y: cell.positionY + dragOffset.height)
+        .gesture(integratedDragGesture)
+    }
+    
+    private var integratedDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if !isDragging && longPressTimer == nil && !hasTriggeredTransition {
+                    longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                        onLongPress()
+                        hasTriggeredTransition = true
+                        longPressTimer?.invalidate()
+                        longPressTimer = nil
+                    }
+                }
+                
+                if abs(value.translation.width) > 5 || abs(value.translation.height) > 5 {
+                    isDragging = true
+                    longPressTimer?.invalidate()
+                    longPressTimer = nil
+                }
+                
+                if isDragging && !hasTriggeredTransition {
+                    dragOffset = value.translation
+                }
+            }
+            .onEnded { value in
+                longPressTimer?.invalidate()
+                longPressTimer = nil
+                
+                if isDragging {
+                    cell.positionX += value.translation.width
+                    cell.positionY += value.translation.height
+                }
+                
+                dragOffset = .zero
+                isDragging = false
+                hasTriggeredTransition = false
+            }
+    }
+    
+    private var resizeGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in resizeOffset = value.translation }
+            .onEnded { value in
+                let newWidth = max(minSize.width, cell.sizeWidth + value.translation.width)
+                let newHeight = max(minSize.height, cell.sizeHeight + value.translation.height)
+                cell.sizeWidth = newWidth
+                cell.sizeHeight = newHeight
+                resizeOffset = .zero
+            }
+    }
+}
+
