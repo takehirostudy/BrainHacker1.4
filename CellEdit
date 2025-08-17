@@ -1,0 +1,207 @@
+import SwiftUI
+
+struct CellEditView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    
+    @Bindable var cell: CellData
+    
+    @State private var newItemText: String = ""
+
+    var body: some View {
+        NavigationView {
+            VStack {
+                switch cell.cellType {
+                case .memo:
+                    memoEditorView
+                default:
+                    checklistEditorView
+                }
+            }
+            .navigationTitle("\(cell.cellType.rawValue) の編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    HStack {
+                        // ▼▼▼【修正点3】▼▼▼
+                        // ボタンのtintカラーをより濃い色に変更し、太字にする
+                        Button("編集完了") { dismiss() }
+                            .fontWeight(.bold)
+                            .tint(Color.themeAccent2)
+                        // ▲▲▲【ここまで】▲▲▲
+                        
+                        Button { deleteCell() } label: { Image(systemName: "trash.fill") }
+                            .tint(.red)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var checklistEditorView: some View {
+        List {
+            // ▼▼▼ 修正箇所 ▼▼▼
+            // if letによる不要なアンラップを削除
+            ForEach(cell.items) { item in
+                ChecklistItemRow(item: item, cellType: cell.cellType)
+            }
+            .onDelete(perform: deleteChecklistItem)
+            // ▲▲▲ ここまで ▲▲▲
+            
+            HStack {
+                // ▼▼▼【修正点4】▼▼▼
+                // 左側にプレースホルダーのチェックボックスを追加
+                Image(systemName: "square")
+                    .foregroundColor(.secondary)
+                // ▲▲▲【ここまで】▲▲▲
+                
+                TextField("新しいタスクを追加", text: $newItemText, onCommit: addChecklistItem)
+                Button(action: addChecklistItem) {
+                    Image(systemName: "plus.circle.fill").foregroundColor(.green)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+
+    private var memoEditorView: some View {
+        TextEditor(text: $cell.memoContent)
+            .padding(8).border(Color.gray.opacity(0.2), width: 1).padding()
+    }
+    
+    private func addChecklistItem() {
+        guard !newItemText.isEmpty else { return }
+        let newItem = ChecklistItem(text: newItemText)
+        newItem.cell = cell
+        newItemText = ""
+    }
+    
+    private func deleteChecklistItem(at offsets: IndexSet) {
+        // ▼▼▼ 修正箇所 ▼▼▼
+        // if letによる不要なアンラップを削除
+        for index in offsets { modelContext.delete(cell.items[index]) }
+        // ▲▲▲ ここまで ▲▲▲
+    }
+    
+    private func deleteCell() {
+        modelContext.delete(cell)
+        dismiss()
+    }
+}
+
+
+// ChecklistItemRow とピッカーViewは変更なし
+struct ChecklistItemRow: View {
+    @Bindable var item: ChecklistItem
+    let cellType: CellType
+
+    @State private var showTimePicker = false
+    @State private var showDatePicker = false
+
+    var body: some View {
+        HStack {
+            Button(action: { item.isCompleted.toggle() }) {
+                Image(systemName: item.isCompleted ? "checkmark.square.fill" : "square")
+                    .foregroundColor(item.isCompleted ? .themeAccent2 : .primary)
+            }.buttonStyle(.plain)
+            
+            TextField("タスク名", text: $item.text)
+                .foregroundColor(item.isCompleted ? .gray : .primary)
+                .strikethrough(item.isCompleted, color: .gray)
+            
+            Spacer()
+            
+            switch cellType {
+            case .routine, .today:
+                Button(action: { self.showTimePicker.toggle() }) {
+                    if let time = item.scheduledTime {
+                        Text(time, style: .time)
+                            .font(.caption).padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.themeAccent3.opacity(0.8)).foregroundColor(.black)
+                            .clipShape(Capsule())
+                    } else {
+                        Image(systemName: "alarm")
+                            .foregroundColor(.themeAccent2)
+                    }
+                }.buttonStyle(.plain)
+
+            case .deadline:
+                Button(action: { self.showDatePicker.toggle() }) {
+                    if let date = item.deadlineDate {
+                        Text(date, format: .dateTime.month().day())
+                            .font(.caption).padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.themeAccent3.opacity(0.8)).foregroundColor(.black)
+                            .clipShape(Capsule())
+                    } else {
+                        Image(systemName: "calendar.badge.plus")
+                            .foregroundColor(.themeAccent2)
+                    }
+                }.buttonStyle(.plain)
+
+            case .memo:
+                EmptyView()
+            }
+        }
+        .sheet(isPresented: $showTimePicker) {
+            TimePickerView(scheduledTime: $item.scheduledTime)
+        }
+        .sheet(isPresented: $showDatePicker) {
+            DatePickerView(deadlineDate: $item.deadlineDate)
+        }
+    }
+}
+
+struct TimePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var scheduledTime: Date?
+    @State private var date: Date
+    init(scheduledTime: Binding<Date?>) {
+        self._scheduledTime = scheduledTime
+        self._date = State(initialValue: scheduledTime.wrappedValue ?? Date())
+    }
+    var body: some View {
+        NavigationView {
+            VStack {
+                DatePicker("時刻を選択", selection: $date, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.wheel).labelsHidden()
+                Spacer()
+            }
+            .padding().navigationTitle("時刻の編集").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { scheduledTime = date; dismiss() } }
+                if scheduledTime != nil {
+                    ToolbarItem(placement: .destructiveAction) { Button("時刻を削除", role: .destructive) { scheduledTime = nil; dismiss() } }
+                }
+            }
+        }
+    }
+}
+
+struct DatePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var deadlineDate: Date?
+    @State private var date: Date
+    init(deadlineDate: Binding<Date?>) {
+        self._deadlineDate = deadlineDate
+        self._date = State(initialValue: deadlineDate.wrappedValue ?? Date())
+    }
+    var body: some View {
+        NavigationView {
+            VStack {
+                DatePicker("締切日を選択", selection: $date, displayedComponents: .date)
+                    .datePickerStyle(.graphical).labelsHidden()
+                Spacer()
+            }
+            .padding().navigationTitle("締切日の編集").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { deadlineDate = date; dismiss() } }
+                if deadlineDate != nil {
+                    ToolbarItem(placement: .destructiveAction) { Button("締切日を削除", role: .destructive) { deadlineDate = nil; dismiss() } }
+                }
+            }
+        }
+    }
+}
+
